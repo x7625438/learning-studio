@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+backend/.venv/
+
+# Database
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Environment variables
+.env
+.env.local
+.env.production
+backend/.env
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+.cache/
+
+# Uploads
+backend/uploads/
+uploads/
+
+# Vector store
+backend/vector_store/
+vector_store/
+
+# Auth tokens
+.auth_token
+backend/.auth_token
+
+# Build artifacts
+*.egg-info/
+build/

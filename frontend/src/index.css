@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Plus Jakarta Sans', 'Noto Serif SC', system-ui, sans-serif;
+  color: #273126;
+  background: #f7f1e4;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 10% 5%, rgba(217, 139, 74, 0.18), transparent 28rem),
+    radial-gradient(circle at 80% 20%, rgba(71, 117, 84, 0.14), transparent 32rem),
+    linear-gradient(135deg, #fbf4e8 0%, #f0e4ce 100%);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+@layer components {
+  .paper-card {
+    @apply rounded-[1.75rem] border border-amber-900/10 bg-white/70 shadow-[0_24px_80px_rgba(82,60,34,0.12)] backdrop-blur;
+  }
+
+  .ink-heading {
+    @apply font-semibold tracking-[-0.03em] text-stone-900;
+  }
+
+  .warm-button {
+    @apply inline-flex items-center justify-center rounded-2xl bg-emerald-900 px-4 py-2.5 text-sm font-semibold text-amber-50 shadow-lg shadow-emerald-950/10 transition hover:-translate-y-0.5 hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .ghost-button {
+    @apply inline-flex items-center justify-center rounded-2xl border border-stone-300/80 bg-white/60 px-4 py-2.5 text-sm font-semibold text-stone-700 transition hover:-translate-y-0.5 hover:border-emerald-700 hover:text-emerald-900;
+  }
+
+  .field {
+    @apply w-full rounded-2xl border border-stone-300/80 bg-white/80 px-4 py-3 text-sm outline-none transition focus:border-emerald-800 focus:ring-4 focus:ring-emerald-900/10;
+  }
+}
