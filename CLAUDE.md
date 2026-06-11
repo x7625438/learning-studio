@@ -4,174 +4,125 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI-powered learning platform with 11 active modules for exam prep and university students. Frontend is React 18 + TypeScript + Vite (port 5173); Backend is Flask + SQLite (port 5001 for local Vite proxy). AI uses Qwen models via Aliyun DashScope API (OpenAI-compatible).
-
-**Active modules**: QA (instant Q&A), Profile (learning profile + weak points), Textbook (document chat), Practice (active recall training), WrongQuestions (error analysis + similar questions), Calendar (study calendar), Feynman (explanation training), LearningPath (path generation), Writing (canvas-style editor), DocumentEvolution, KnowledgeGraph.
+A full-stack insurance customer acquisition platform (保险智能获客). The frontend is a React + TypeScript + Vite SPA in Chinese. The backend is Node.js + Express + SQLite. Features include AI-assisted customer intake (DeepSeek), expert matching, order tracking, team management, and an admin dashboard.
 
 ## Development Commands
 
-**Environment Setup**:
-Project uses `.env` files for local configuration. Copy `.env.example` and set AI/API credentials locally before using AI-powered features.
+Root `package.json` scripts orchestrate both frontend and backend:
 
-**Backend** (requires Python 3.9+):
+| Command | What it does |
+|---------|-------------|
+| `npm run dev` | Starts both frontend and backend concurrently |
+| `npm run dev:frontend` | Vite dev server only (port 5175) |
+| `npm run dev:backend` | Backend with `tsx watch` only (port 3001) |
+| `npm run build` | Builds both frontend (`tsc -b && vite build`) and backend (`cd backend && tsc`) |
+| `npm start` | Production server: runs compiled backend which serves `dist/` static files |
+| `npm run db:seed` | Seeds experts and test users into SQLite |
+| `npm run lint` | ESLint on entire project |
+| `npm run preview` | Vite preview of production frontend build |
+
+**First-time setup:**
 ```bash
-cd backend
-pip install -r requirements.txt
-python3 app.py                   # Start Flask + SocketIO on port 5001 (reads from ../.env)
-python -m pytest                 # Run all tests
-python -m pytest tests/test_auth.py  # Run single test file
-curl http://127.0.0.1:5001/api/health  # Health check
+npm install && cd backend && npm install && cd ..
+npm run db:seed
+npm run dev
 ```
 
-**Frontend** (requires Node.js 18+):
-```bash
-cd frontend
-npm install
-npm run dev          # Start Vite dev server on port 5173
-npm run build        # TypeScript compile + production build
-npm run lint         # ESLint check
-npm run test         # Vitest single run
-npm run test:watch   # Vitest watch mode
-npm run preview      # Preview production build
-```
+- Frontend: `http://localhost:5175`
+- Backend API: `http://localhost:3001/api`
 
-**Verification workflow** after changes:
-```bash
-cd frontend && npm run lint && npm run test && npm run build
-cd ../backend && python -m pytest
-```
+No test framework is configured.
 
-## Backend Architecture
+## Architecture
 
-**Stack**: Flask 3.0, SQLite (WAL mode), OpenAI SDK (DeepSeek API)
+### Frontend
 
-**Database** (`backend/database.py`):
-- `get_db()` — creates connection with `row_factory=sqlite3.Row`, WAL mode, foreign keys ON
-- `init_db()` — reads `schema.sql` and executes on startup
-- All endpoints must call `db.close()` manually after use
+The entire UI lives in a single file: **[src/App.tsx](src/App.tsx)** (~4000 lines). All page components, types, and page-level logic are defined within this file. There is no component directory structure.
 
-**Schema** (`backend/schema.sql`): 13 tables — `books`, `reading_progress`, `quotes`, `problem_sessions`, `pomodoro_sessions`, `relaxation_sessions`, `documents`, `resource_searches`, `brainstorm_sessions`, `essays`, `error_questions`, `notes`, `user_profile_document`, `wrong_questions`, `similar_questions`, `review_plans`. DB columns use `snake_case`.
+- **[src/main.tsx](src/main.tsx)** — Entry point. Renders `<App />` inside `React.StrictMode` with an error boundary.
+- **[src/index.css](src/index.css)** — All global and component styles (~6800 lines). No CSS-in-JS or CSS modules; everything is plain CSS class selectors.
+- **[src/LoginPage.tsx](src/LoginPage.tsx)** — Standalone login/register page (separate from App.tsx).
+- **[src/api/](src/api/)** — Typed API clients. One file per domain (`auth.ts`, `orders.ts`, etc.). Uses axios with interceptors for JWT auth and 401 handling.
 
-**Blueprint pattern**: Each feature module is a Flask Blueprint in `backend/blueprints/`, registered in `app.py`. Most use `/api/v1/<module>` prefix; pomodoro uses `/api/pomodoro`. Each blueprint has a `_format_*()` helper to convert snake_case DB rows to camelCase JSON responses.
+**Routing:** Manual client-side routing via `window.history.pushState`/`popstate` (no React Router). The `Route` type union defines all routes, mapped to paths in `routePaths`. The `App` component holds `route` state and renders the corresponding page in `<main>`.
 
-**AI Service** (`backend/services/ai_service.py`):
-- `chat_completion(messages, temperature)` — standard completion, strips `<think>...</think>` reasoning tags
-- `chat_completion_stream(messages, temperature)` — SSE streaming, buffers and strips thinking tags before output
-- `chat_completion_json(messages, temperature)` — JSON response, strips markdown fences and thinking tags, raises `ValueError` if not JSON
-- `translate_long_text(text, chunk_size=2000)` — splits by paragraphs, translates in chunks
+**State Management:** All state is local React state (`useState`, `useRef`, `useEffect`) within `App.tsx`. No external state library.
 
-**Learning Service** (`backend/services/learning_service.py`):
-- Manages user learning profiles, weak point tracking, and personalized recommendations
-- `get_learning_profile(user_id)` — retrieves user's learning stats and weak points
-- `update_weak_point(user_id, topic, performance)` — tracks performance on specific topics
-- Integrates with practice and textbook modules for adaptive learning
+### Backend
 
-**User Profile Service** (`backend/services/user_profile_service.py`):
-- Manages user profile document for AI personalization
-- `get_user_profile_context(user_id)` — retrieves formatted user profile for AI context
-- `should_include_profile(source_type)` — determines if a module should include profile context
-- Profile document contains user's learning style, personality traits, interests, and AI observations
-- All major interaction modules (QA, Feynman, Textbook, Practice, etc.) automatically include profile context
-- Users can manually edit profile via Profile page; AI can also update it during interactions
+- **[backend/src/index.ts](backend/src/index.ts)** — Express entry. Registers all route modules, applies middleware (helmet, cors, rate limiting, JSON parsing), serves frontend static files in production, and handles the SPA fallback.
+- **[backend/src/db.ts](backend/src/db.ts)** — SQLite database via `better-sqlite3` with WAL mode and foreign keys enabled. Schema is defined inline in `initDatabase()`. Migration pattern: `ensureColumn()` adds missing columns to existing tables (no traditional migration files).
+- **[backend/src/auth.ts](backend/src/auth.ts)** — JWT token generation/verification, bcrypt password hashing, and login rate limiting (5 failed attempts within 15 minutes locks the account).
+- **[backend/src/deepseek.ts](backend/src/deepseek.ts)** — DeepSeek API integration for AI customer info extraction and conversational intake.
+- **[backend/src/routes/](backend/src/routes/)** — Express routers, one per domain (`auth.ts`, `orders.ts`, `ai.ts`, `admin.ts`, etc.). Most protected routes use `authMiddleware` which expects a `Bearer` token in the `Authorization` header and sets `req.userId`.
+- **[backend/src/seed.ts](backend/src/seed.ts)** — Seeds expert profiles and test users (password: `password123`).
 
-**Wrong Questions Module** (`backend/blueprints/wrong_questions.py`):
-- Complete error analysis system with diagnosis → practice → review loop
-- `POST /upload` — upload wrong question image, AI recognizes and analyzes using vision model
-- `GET /` — list all wrong questions with filtering by status/subject
-- `GET /<id>` — get detailed question info including similar questions
-- `POST /<id>/generate-similar` — AI generates 3-5 similar practice questions
-- `POST /<id>/similar/<similar_id>/submit` — submit answer to similar question, AI judges correctness
-- `GET /review/plan` — get questions due for review based on spaced repetition
-- `POST /review/summary` — generate AI-powered review summary with weaknesses and suggestions
-- Automatically updates weak points and mastery levels
-- Supports long-term review planning with next_review_at scheduling
+### Database Schema (Key Tables)
 
-**Textbook Service** (`backend/services/textbook_service.py`):
-- Handles document processing and context-aware Q&A for uploaded course materials
-- Extracts text from PDF/DOCX/TXT files
-- Maintains conversation context for multi-turn document discussions
+- `users` — Accounts with roles, platform roles, and invite codes
+- `customers` — Client intake records (demographics, needs, budget)
+- `experts` — Insurance advisor profiles with tags and specialties
+- `orders` — Case/work orders linking customer + expert with status tracking
+- `order_timeline` / `case_status_history` / `case_notes` — Order lifecycle tracking
+- `messages` — Chat between users
+- `notifications` — User notification inbox
+- `team_members` — Leader/member relationship for team management
+- `earnings` / `commissions` — Payout tracking
+- `ai_conversations` / `conversation_messages` — AI chat sessions
+- `client_locks` — Phone-based client exclusivity locks
 
-**Personalization Service** (`backend/services/personalization.py`):
-- Provides personalized learning recommendations based on user history and weak points
-- Adapts difficulty and content selection for practice sessions
+### Authentication Flow
 
-**Config** (`backend/config.py`): `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `TEXT_MODEL`, `VISION_MODEL`, `CORS_ORIGINS`, `DATABASE_PATH`, `UPLOAD_FOLDER`, `JWT_SECRET`, `JWT_EXPIRES_HOURS`, `MAX_CONTENT_LENGTH` (50MB default, 10MB for image uploads). 
+1. User logs in via `/api/auth/login` → receives JWT token
+2. Token stored in `localStorage` as `token`
+3. Axios interceptor attaches `Authorization: Bearer <token>` to every API request
+4. Backend `authMiddleware` verifies token and sets `req.userId`
+5. On 401 response, axios interceptor removes token and reloads the page
 
-**Current AI Configuration**:
-- API Provider: Aliyun DashScope (OpenAI-compatible)
-- Base URL: `https://dashscope.aliyuncs.com/compatible-mode/v1`
-- API Key: configured via `AI_API_KEY`, `DASHSCOPE_API_KEY`, or `DEEPSEEK_API_KEY`
-- Text Model: `qwen-plus`
-- Vision Model: `qwen-vl-max`
+### Platform Role System
 
-Sensitive values should use environment variables in production.
+Separate from the UI-facing `role` (`'介绍人' | '合伙人'`), each user has a `platform_role`:
 
-**Auth** (`backend/auth.py`): 
-- `hash_password()`, `verify_password()` — Werkzeug password hashing
-- `create_access_token(user)` — JWT with `sub`, `email`, `username`, expires in `JWT_EXPIRES_HOURS`
-- `@login_required` decorator — validates Bearer token, sets `g.current_user`, returns 401 if invalid
+| Platform Role | Description |
+|--------------|-------------|
+| `a_side` | Client introducer (推荐人) — introduces customers |
+| `b_side` | Insurance broker/advisor — claims and handles cases |
+| `admin` | Platform administrator — accesses `/admin` dashboard |
 
-**Real-time** (`backend/extensions.py`): Flask-SocketIO for WebSocket connections. APScheduler for background jobs (reminder system in `backend/scheduler/reminder.py`). Both initialized in `app.py`.
+`a_side` users have an `a_side_type` (`regular_a` | `small_a` | `big_a`) and an `override_rate`. `is_licensed` indicates whether the user holds an insurance license (relevant for B-side eligibility).
 
-## Frontend Architecture
+### Vite Proxy
 
-**Stack**: React 18, TypeScript, Vite 5, Tailwind CSS 3, Zustand, React Query v5, React Router v6, Axios, Framer Motion
+`vite.config.ts` proxies `/api` requests to `http://localhost:3001` during development. The dev server runs on port 5175 (not the default 5173). `preview.allowedHosts` has two Cloudflare tunnel domains configured.
 
-**State** (`frontend/src/store/index.ts`): 4 Zustand stores:
-- `useUserStore` — auth user, persisted to `localStorage('user-storage')`
-- `useUIStore` — sidebar, theme, loading, persisted
-- `useNotificationStore` — toast notifications, auto-dismiss after 5s (duration=0 to disable)
-- `useLearningProgressStore` — study metrics, persisted
+### AI Integration
 
-**API layer** (`frontend/src/utils/api-client.ts`):
-- Singleton `apiClient` wrapping Axios
-- Bearer token from `localStorage('auth_token')` via request interceptor
-- Response interceptor auto-dispatches errors to `useNotificationStore` and removes token on 401
-- All endpoints in `API_ENDPOINTS` constant (camelCase keys, `/api/v1/` prefix except pomodoro)
-- 30s timeout; error notification messages mapped by HTTP status code
+The platform integrates DeepSeek API (`deepseek-chat` model) for:
+- **Smart intake:** Users describe customers in natural language; AI extracts structured fields (name, age, needs, budget, etc.)
+- **Conversational mode:** AI guides users to fill missing information, then generates a customer record and order on completion
+- Backend stores AI conversations in `ai_conversations` + `conversation_messages` tables
 
-**Routing** (`frontend/src/App.tsx`): Flat Routes inside `Layout`, no nested routes. Current pages: Home, Textbook, Practice, Writing, Calendar, LearningPath, Feynman, QA, Profile, DocumentEvolution, KnowledgeGraph, WrongQuestions. Auth routes: Login, Register.
+## TypeScript Constraints
 
-**WebSocket** (`frontend/src/hooks/useSocket.ts`): Socket.IO client hook for real-time features. Connects to backend SocketIO server, handles reconnection and event listeners.
+- `tsconfig.app.json` uses `verbatimModuleSyntax: true` — type imports must use `import type` syntax
+- `noUnusedLocals` and `noUnusedParameters` are enabled; unused variables will fail the build
+- Backend uses `tsx` for dev and `tsc` for production builds; it compiles to `backend/dist/`
 
-**Tailwind** (`frontend/tailwind.config.js`): `primary` blue palette, custom animations (`fade-in`, `slide-up`, `slide-down`, `pulse-slow`), `xs` breakpoint at 475px.
+## Adding a New Page
 
-## Conventions
+Follow the existing single-file pattern:
 
-- UI text in Chinese (Simplified)
-- Feature pages in `frontend/src/pages/`, components in `frontend/src/components/`
-- User ID fallback: `useUserStore((s) => s.user)?.id || 'demo-user'`
-- Tab-based pages use `useState` for active tab + conditional rendering
-- React Query: 5-min stale time, single retry, `refetchOnWindowFocus: false`
-- Vite dev server proxies `/api` and `/socket.io` to Flask (configured in `vite.config.ts`)
-- Adding a new feature: blueprint → schema.sql table → register in `app.py` → page → route → nav item
-- File uploads: max 50MB for documents (PDF/DOCX/TXT), 10MB for images. Saved to `backend/uploads/`
-- Vector store: ChromaDB in `backend/vector_store/` for document embeddings and semantic search
-- All blueprints registered via `BLUEPRINTS` list in `backend/blueprints/__init__.py`
-- Error responses follow format: `{'message': 'user-facing message', 'code': 'ERROR_CODE'}` with appropriate HTTP status
+1. Add route ID to the `Route` type union in `App.tsx`
+2. Add path mapping to `routePaths`
+3. Create page component as a top-level function in `App.tsx`
+4. Add conditional render block in `<main>`
+5. Add CSS styles in `index.css` under a `.*-page` namespace
+6. Add nav item to `navItems` array if it should appear in top navigation
+7. If the page needs backend data, add API client methods in `src/api/` and route handlers in `backend/src/routes/`
 
-## Production Build
+## Role-Based Feature Gating
 
-**Frontend** (`frontend/Dockerfile`): Multi-stage — `node:18-alpine` builds, `nginx:alpine` serves. `nginx.conf` handles SPA routing (`try_files $uri $uri/ /index.html`) and proxies `/api` to `http://backend:3000`.
-
-**Docker networking**: Frontend container names its backend `http://backend:3000` in nginx.conf. No docker-compose at root — containers must be on same network.
-
-## Key Files
-
-- `backend/app.py` — Flask entry, blueprint registration, `init_db()` on startup, SocketIO + scheduler initialization
-- `backend/auth.py` — JWT creation/validation, password hashing, `@login_required` decorator
-- `backend/extensions.py` — SocketIO and APScheduler instances
-- `backend/schema.sql` — all table definitions
-- `backend/services/ai_service.py` — all LLM calls, streaming, JSON parsing
-- `backend/services/vector_service.py` — ChromaDB operations for document embeddings
-- `backend/services/learning_service.py` — learning profile and weak point tracking
-- `backend/services/textbook_service.py` — document processing and context-aware Q&A
-- `backend/services/personalization.py` — personalized recommendations based on user history
-- `backend/scheduler/reminder.py` — APScheduler jobs for review reminders
-- `backend/config.py` — API credentials and paths
-- `frontend/src/App.tsx` — route definitions
-- `frontend/src/utils/api-client.ts` — Axios singleton with interceptors
-- `frontend/src/utils/sse.ts` — Server-Sent Events parser for streaming responses
-- `frontend/src/store/index.ts` — all Zustand stores
-- `frontend/src/hooks/useSocket.ts` — Socket.IO client hook
-- `frontend/vite.config.ts` — Vite config with `/api` and `/socket.io` proxy to `localhost:5001`
+The `role` state (`'介绍人' | '合伙人'`) controls feature visibility:
+- Navigation items are dynamically filtered: `'我的团队'` only appears when `role === '合伙人'`
+- Home page shows "团队概览" card only for 合伙人
+- The `RolePill` button at bottom-right toggles between roles
